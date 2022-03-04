@@ -9,3 +9,12 @@
         - pas de comparaison avec l'etat de l'art !!
         - les res (Fig. 14) n'ont pas l'air genial
 
+dans paperswithcode, il n'y a qu'un papier sur IMS dataset, celui-ci, qui donne aussi des res sur FEMTO dataset.
+Il y a 2 papiers sur FEMTO dataset.
+
+l'autre papier fait du transfert learning (= train on one bearing, fnietune on another) de FEMTO a FEMTO...
+
+pour FEMTO,
+- chaque bearing a des mesures jusque 30,000 timesteps.
+- l'eval se fait sur la prediction du RMSE(Health Index) + "score", ce qui permet de comparer avec la litterature
+
