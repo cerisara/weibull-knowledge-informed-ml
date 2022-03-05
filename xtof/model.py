@@ -2,12 +2,23 @@ import torch
 import torch.nn as nn
 
 class TSProjector(nn.Module):
-    def __init__(self):
+    def __init__(self,a):
         super(TSProjector, self).__init__()
+        self.b = 10
+        self.c = torch.rand(self.b,100)
+        self.mlpx = nn.Linear(a,self.b)
+        # c = (b,100)
 
     def forward(self,x):
         # x = (B,T,a)
         # assign each timestep to one of the 100 with Viterbi
+        B = x.size(0)
+        z = self.mlpx(x)
+        # z = (B,T,b)
+        st  = torch.bmm(z,c)
+        # st = (B,T,100)
+        stt = torch.zeros(B,100)
+        
 
     def training_step(self,x,y):
         # 1- CTC loss for a few epochs to train to align
