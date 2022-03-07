@@ -10,7 +10,7 @@ class TSProjector(nn.Module):
         # c = (b,100)
         self.VitTransMat1 = torch.eye(100)
         self.VitTransMat2 = torch.zeros(100,100)
-        for i in range(0,99): self.VitTransMat2[i+1,i]=1.
+        for i in range(0,99): self.VitTransMat2[i,i+1]=1.
 
     def forward(self,x):
         # x = (B,T,a)
@@ -19,21 +19,20 @@ class TSProjector(nn.Module):
         z = self.mlpx(x)
         # z = (B,T,b)
         # now compute distances btw every input frame and every 100 tgt frame:
-        allsims = torch.matmul(z,self.c)
+        allsims = torch.matmul(z,self.c).detach()
         # allsims = (B,T,b) * (b,100) = (B,T,100)
         # now Viterbi (outside the pytorch graph - non differentiable)
-        st = torch.zeros(B,100)
-        stt = torch.zeros(B,100)
-        st[:,0] = 0.+allsims[:,0,0].detach()
+        st = allsims[:,0,:]
+        bt = []
         for t in range(1,T):
             stt1 = torch.matmul(st,self.VitTransMat1) # (B,100) * (100,100) = (B,100)
-            print(stt1)
             stt2 = torch.matmul(st,self.VitTransMat2) # (B,100) * (100,100) = (B,100)
-            print(stt2)
             stt3 = torch.stack((stt1,stt2),dim=0) # (2,B,100)
-            stt, sttidx = torch.max(stt3,dim=0) # (B,100)
-            print(stt)
-            exit()
+            st, sttidx = torch.max(stt3,dim=0) # (B,100)
+            # TODO: force au debut sttidx=1 dans le coin superieur gauche
+            bt.append(sttidx)
+            st += allsims[:,t,:]
+            
 
     def training_step(self,x,y):
         # 1- CTC loss for a few epochs to train to align
@@ -79,7 +78,7 @@ class TSProjector(nn.Module):
 
 def toytest():
     mod=TSProjector(7)
-    x = torch.rand(4,13,7)
+    x = torch.rand(3,13,7)
     mod(x)
 
 toytest()
