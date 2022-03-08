@@ -5,12 +5,17 @@ class TSProjector(nn.Module):
     def __init__(self,a):
         super(TSProjector, self).__init__()
         self.b = 10
-        self.c = torch.rand(self.b,100)
+        self.d = 10
+        # centroides pour chacune des 100 trames target
+        self.c = torch.rand(self.b,100) # c = (b,100)
+        # mlpx encode les inputs en vecteurs de dim b
         self.mlpx = nn.Linear(a,self.b)
-        # c = (b,100)
+        # matrices de transitions diagonales pour Viterbi (ce ne sont pas des parametres)
         self.VitTransMat1 = torch.eye(100)
         self.VitTransMat2 = torch.zeros(100,100)
         for i in range(0,99): self.VitTransMat2[i,i+1]=1.
+        # projection dependant de chacune des 100 trames target
+        self.proj2tgt = nn.Linear(100,self.b,self.d)
 
     def forward(self,x):
         # x = (B,T,a)
@@ -29,10 +34,17 @@ class TSProjector(nn.Module):
             stt2 = torch.matmul(st,self.VitTransMat2) # (B,100) * (100,100) = (B,100)
             stt3 = torch.stack((stt1,stt2),dim=0) # (2,B,100)
             st, sttidx = torch.max(stt3,dim=0) # (B,100)
-            # TODO: force au debut sttidx=1 dans le coin superieur gauche
+            # force sttidx=1 (changement d'etat) dans le coin superieur gauche
+            sttidx[:,t:] = 1
             bt.append(sttidx)
             st += allsims[:,t,:]
-            
+        # backtrack
+        states=torch.zeros(B,T).long()
+        states[:,T-1]=100-1
+        for t in range(T-1,0,-1):
+            for b in range(B): states[b,t-1]=sttidx[b,states[b,t]]
+        
+        # avec cet alignement, on peut projeter 
 
     def training_step(self,x,y):
         # 1- CTC loss for a few epochs to train to align
