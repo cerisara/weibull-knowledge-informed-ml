@@ -1,7 +1,8 @@
 import torch
 import torch.nn as nn
+import pytorch_lightning as pl
 
-class TSProjector(nn.Module):
+class TSProjector(pl.LightningModule):
     def __init__(self,a):
         super(TSProjector, self).__init__()
         self.b = 10
@@ -23,6 +24,11 @@ class TSProjector(nn.Module):
         self.mlprul = nn.Sequential(nn.Linear(self.h,self.d),nn.ReLU(),
                                 nn.Linear(self.d,self.d),nn.ReLU(),
                                 nn.Linear(self.d,1))
+        # for training:
+        self.stage = -1
+        self.mseloss = nn.MSELoss()
+        self.ctcloss = nn.CTCLoss(blank=100)
+        self.tgtseq = torch.tensor([i for i in range(100)]).long()
 
     def forward(self,x):
         # x = (B,T,a)
@@ -74,11 +80,44 @@ class TSProjector(nn.Module):
         rul = self.mlprul(y[:,-1,:].view(B,-1))
         return rul
 
-    def training_step(self,x,y):
-        # 1- CTC loss for a few epochs to train to align
+    def shallTrainAlign(self):
+        # alternate training align and prediction
+        # TODO: train both together E2E ?
+        self.stage += 1
+        if self.stage<=10: return True
+        if self.stage<=20: return False
+        self.stage = 0
+        return True
 
+    def alignLoss(self,x,length):
+        # x = (B,T,inputdim)
+        # length = (B,)
+        B,T = x.size(0),x.size(1)
+        goldy = self.tgtseq.expand(B,100)
+        z = self.mlpx(x)
+        allsims = torch.matmul(z,self.c)
+        # allsims = (B,T,b) * (b,100) = (B,T,100)
+        blanks = torch.full((B,T,1),-9999.)
+        pp = torch.cat((allsims,blanks),dim=2)
+        logprobs = nn.functional.log_softmax(pp,dim=2).permute(1,0,2)
+        # logprobs = (T,B,101)
+        loss = self.ctcloss(logprobs,goldy,length,torch.full((B,),100))
+        return loss
+
+    def rulLoss(self,x,y):
+        haty = self.forward(x)
+        return self.mseloss(haty,y)
+
+    def training_step(self,batch,batch_idx):
+        x,rul,length = batch
+        # 1- CTC loss for a few epochs to train to align
         # 2- RUL-pred (MSE) loss after Viterbi align
-        pass
+        if self.shallTrainAlign(): return self.alignLoss(x,length)
+        else: return self.rulLoss(x,rul)
+
+    def configure_optimizers(self):
+        optimizer = torch.optim.Adam(self.parameters(), lr=1e-3)
+        return optimizer
 
     def beam_search_decoder(post, k):
         """Beam Search Decoder
@@ -116,10 +155,29 @@ class TSProjector(nn.Module):
             indices = torch.cat([indices, index.unsqueeze(-1)], dim=-1)
         return indices, log_prob
 
+class ToyData(torch.utils.data.Dataset):
+    def __init__(self):
+        self.data = []
+        # generate a total of 20 random samples
+        for i in range(20):
+            x = torch.rand(130,7)
+            rul = torch.rand(1)
+            # 3rd item = length of the seq (useful when padding seqs)
+            self.data.append((x,rul,130))
+
+    def __len__(self):
+        return len(self.data)
+
+    def __getitem__(self,i):
+        return self.data[i]
+
 def toytest():
     mod=TSProjector(7)
-    x = torch.rand(3,130,7)
-    mod(x)
+    data = ToyData()
+    params = {'batch_size': 2, 'shuffle': True, 'num_workers': 1}
+    trainD = torch.utils.data.DataLoader(data,**params)
+    trainer = pl.Trainer(max_epochs=1)
+    trainer.fit(mod, trainD)
 
 toytest()
 
