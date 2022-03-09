@@ -42,8 +42,17 @@ class TSProjector(nn.Module):
         states=torch.zeros(B,T).long()
         states[:,T-1]=100-1
         for t in range(T-1,0,-1):
-            for b in range(B): states[b,t-1]=sttidx[b,states[b,t]]
-        
+            btprev = bt[t-1]
+            for b in range(B):
+                if btprev[b,states[b,t]] == 0: prev=states[b,t]
+                else: prev=states[b,t]-1
+                if b==0: print("dbug",t,states[b,t],btprev[b,states[b,t]])
+                states[b,t-1]= prev
+      
+        for t in range(T):
+            print("VIT",t,states[0,t].item())
+        exit()
+  
         # avec cet alignement, on peut projeter 
 
     def training_step(self,x,y):
@@ -90,7 +99,7 @@ class TSProjector(nn.Module):
 
 def toytest():
     mod=TSProjector(7)
-    x = torch.rand(3,13,7)
+    x = torch.rand(3,130,7)
     mod(x)
 
 toytest()
