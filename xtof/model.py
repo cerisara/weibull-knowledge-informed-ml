@@ -5,6 +5,9 @@ import pytorch_lightning as pl
 # the later you wait, the better the tools
 # the sooner you start, the better your tools
 
+# pour visualiser avec tensorboard:
+# tensorboard --logdir ./lightning_logs/
+
 class TSProjector(pl.LightningModule):
     def __init__(self,a):
         super(TSProjector, self).__init__()
@@ -34,6 +37,7 @@ class TSProjector(pl.LightningModule):
         self.tgtseq = torch.tensor([i for i in range(100)]).long()
 
     def forward(self,x):
+        # TODO: prendre exemple sur ce lien pour plus rapide ? https://pytorch.org/tutorials/intermediate/forced_alignment_with_torchaudio_tutorial.html
         # x = (B,T,a)
         # assign each timestep to one of the 100 with Viterbi
         B,T = x.size(0),x.size(1)
@@ -63,7 +67,10 @@ class TSProjector(pl.LightningModule):
             for b in range(B):
                 if btprev[b,states[b,t]] == 0: prev=states[b,t]
                 else: prev=states[b,t]-1
-                states[b,t-1]= prev
+                states[b,t-1]= max(0,prev)
+        for b in range(B):
+            for t in range(T):
+                if states[b,t]<0 or states[b,t]>99: print("BUG",b,t,states[b,t])
         # for t in range(T):
         #     print("VIT",t,states[0,t].item())
  
@@ -118,11 +125,16 @@ class TSProjector(pl.LightningModule):
         x,rul,length = batch
         # 1- CTC loss for a few epochs to train to align
         # 2- RUL-pred (MSE) loss after Viterbi align
-        if self.shallTrainAlign(): return self.alignLoss(x,length)
-        else: return self.rulLoss(x,rul)
+        if self.shallTrainAlign():
+            train_loss= self.alignLoss(x,length)
+            self.log("cctloss",train_loss)
+        else:
+            train_loss= self.rulLoss(x,rul)
+            self.log("rulloss",train_loss)
+        return train_loss
 
     def configure_optimizers(self):
-        optimizer = torch.optim.Adam(self.parameters(), lr=1e-3)
+        optimizer = torch.optim.Adam(self.parameters(), lr=1e-2)
         return optimizer
 
 class ToyData(torch.utils.data.Dataset):
@@ -130,7 +142,7 @@ class ToyData(torch.utils.data.Dataset):
         self.data = []
         # generate a total of 20 random samples
         for i in range(20):
-            x = torch.rand(130,7)
+            x = torch.rand(1000,7)
             rul = torch.rand(1)
             # 3rd item = length of the seq (useful when padding seqs)
             self.data.append((x,rul,130))
@@ -146,7 +158,7 @@ def toytest():
     data = ToyData()
     params = {'batch_size': 2, 'shuffle': True, 'num_workers': 1}
     trainD = torch.utils.data.DataLoader(data,**params)
-    trainer = pl.Trainer(max_epochs=1)
+    trainer = pl.Trainer(max_epochs=1000, log_every_n_steps=1)
     trainer.fit(mod, trainD)
 
 toytest()
