@@ -5,17 +5,24 @@ class TSProjector(nn.Module):
     def __init__(self,a):
         super(TSProjector, self).__init__()
         self.b = 10
-        self.d = 10
         # centroides pour chacune des 100 trames target
         self.c = torch.rand(self.b,100) # c = (b,100)
         # mlpx encode les inputs en vecteurs de dim b
-        self.mlpx = nn.Linear(a,self.b)
+        self.mlpx = nn.Sequential(nn.Linear(a,self.b),nn.ReLU(),
+                                nn.Linear(self.b,self.b),nn.ReLU(),
+                                nn.Linear(self.b,self.b))
         # matrices de transitions diagonales pour Viterbi (ce ne sont pas des parametres)
         self.VitTransMat1 = torch.eye(100)
         self.VitTransMat2 = torch.zeros(100,100)
         for i in range(0,99): self.VitTransMat2[i,i+1]=1.
-        # projection dependant de chacune des 100 trames target
-        self.proj2tgt = nn.Linear(100,self.b,self.d)
+        # LSTM sur les 100 trames
+        self.h = 50
+        self.lstm = nn.LSTM(self.b,self.h,batch_first=True)
+        # MLP to predict RUL
+        self.d = 30
+        self.mlprul = nn.Sequential(nn.Linear(self.h,self.d),nn.ReLU(),
+                                nn.Linear(self.d,self.d),nn.ReLU(),
+                                nn.Linear(self.d,1))
 
     def forward(self,x):
         # x = (B,T,a)
@@ -24,9 +31,9 @@ class TSProjector(nn.Module):
         z = self.mlpx(x)
         # z = (B,T,b)
         # now compute distances btw every input frame and every 100 tgt frame:
-        allsims = torch.matmul(z,self.c).detach()
+        allsims = torch.matmul(z,self.c)
         # allsims = (B,T,b) * (b,100) = (B,T,100)
-        # now Viterbi (outside the pytorch graph - non differentiable)
+        # now Viterbi 
         st = allsims[:,0,:]
         bt = []
         for t in range(1,T):
@@ -38,6 +45,7 @@ class TSProjector(nn.Module):
             sttidx[:,t:] = 1
             bt.append(sttidx)
             st += allsims[:,t,:]
+
         # backtrack
         states=torch.zeros(B,T).long()
         states[:,T-1]=100-1
@@ -46,14 +54,25 @@ class TSProjector(nn.Module):
             for b in range(B):
                 if btprev[b,states[b,t]] == 0: prev=states[b,t]
                 else: prev=states[b,t]-1
-                if b==0: print("dbug",t,states[b,t],btprev[b,states[b,t]])
                 states[b,t-1]= prev
-      
-        for t in range(T):
-            print("VIT",t,states[0,t].item())
-        exit()
-  
-        # avec cet alignement, on peut projeter 
+        # for t in range(T):
+        #     print("VIT",t,states[0,t].item())
+ 
+        # on a ici l'alignement global optimal selon le score = \sum_t,u sim(X_t,S_u) 
+        # chacun des 100 centroides est donc aligne avec un ensemble de X_t
+        # on a donc une segmentation de la longue sequence (X_t)
+        # on reduit cette longue seq en moyennant selon cette segmentation
+        zz = torch.zeros(B,100,self.b)
+        for b in range(B):
+            ns = torch.bincount(states[b])
+            for t in range(T):
+                zz[b,states[b,t]] += z[b,t]
+            for t in range(100): zz[b,t] /= ns[t].float()
+        # puis on applique notre LSTM
+        y,_ = self.lstm(zz)
+        # y = (B,100,h)
+        rul = self.mlprul(y[:,-1,:].view(B,-1))
+        return rul
 
     def training_step(self,x,y):
         # 1- CTC loss for a few epochs to train to align
