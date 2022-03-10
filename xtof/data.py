@@ -29,18 +29,29 @@ def loadTrain():
         datetime.datetime.strptime(start_time, "%Y.%m.%d.%H.%M.%S").timetuple()
     )
     allseqs = []
+    allruls = []
+    vmin,vmax = 99999.,-99999.
     for i, sample_name in enumerate(date_list):
-        unix_timestamp = time.mktime(
-            datetime.datetime.strptime(sample_name, "%Y.%m.%d.%H.%M.%S").timetuple()
-        )
+        t = time.mktime(datetime.datetime.strptime(sample_name, "%Y.%m.%d.%H.%M.%S").timetuple())
         onesecseq = []
         with open(trdir+sample_name,"r") as f:
             for l in f:
                 # on ne garde que bearing 1, car c'est le seul a avoir une failure
-                v = l.split("\t")[0]
+                v = float(l.split("\t")[0])
+                if v<vmin: vmin=v
+                elif v>vmax: vmax=v
                 onesecseq.append(v)
         allseqs.append(onesecseq)
-    return allseqs
+        allruls.append(t)
+    lastT = allruls[-1]
+    allruls = [lastT-x for x in allruls]
+    largestRUL = allruls[0]
+    allruls = [x/largestRUL for x in allruls]
+    res=[]
+    vmax -= vmin
+    for s in allseqs:
+        res.append([(x-vmin)/vmax for x in s])
+    return res,allruls
  
 def showTrain():
     trdir = ddir+"2nd_test/"

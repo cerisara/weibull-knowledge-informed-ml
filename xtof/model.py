@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import pytorch_lightning as pl
+import data
 
 # the later you wait, the better the tools
 # the sooner you start, the better your tools
@@ -11,6 +12,29 @@ import pytorch_lightning as pl
 class TSProjector(pl.LightningModule):
     def __init__(self,a):
         super(TSProjector, self).__init__()
+
+        #### CNN+DAN pour chaque seconde = 20k samples
+        self.cnn = nn.Sequential(
+            nn.Conv1d(1, 4, kernel_size=3, stride=1, padding=1),
+            nn.BatchNorm1d(4),
+            nn.ReLU(inplace=True),
+            nn.MaxPool1d(kernel_size=2, stride=2),
+            nn.Conv1d(4, 4, kernel_size=2, stride=2, padding=1),
+            nn.BatchNorm1d(4),
+            nn.ReLU(inplace=True),
+            nn.MaxPool1d(kernel_size=2, stride=2),
+            nn.Conv1d(4, 4, kernel_size=2, stride=2, padding=1),
+            nn.BatchNorm1d(4),
+            nn.ReLU(inplace=True),
+            nn.MaxPool1d(kernel_size=2, stride=2),
+        )
+        self.dan = nn.Sequential(
+                nn.AdaptiveAvgPool1d(1),
+                nn.Linear(4,a),nn.ReLU(),
+                nn.Linear(a,a),nn.ReLU(),
+                nn.Linear(a,a))
+
+        #### Modele de projection vers un 100-LSTM
         self.b = 10
         # centroides pour chacune des 100 trames target
         self.c = torch.rand(self.b,100) # c = (b,100)
@@ -36,11 +60,22 @@ class TSProjector(pl.LightningModule):
         self.ctcloss = nn.CTCLoss(blank=100)
         self.tgtseq = torch.tensor([i for i in range(100)]).long()
 
-    def forward(self,x):
+    def forward(self,x0):
         # TODO: prendre exemple sur ce lien pour plus rapide ? https://pytorch.org/tutorials/intermediate/forced_alignment_with_torchaudio_tutorial.html
+
+        #### ConvNet sur les 1s-segments
+        # x0 = (B,Nseqs,Lseq,1) Lseq=20k
+        B,T,L = x0.size(0),x0.size(1),x0.size(2)
+        z = self.cnn(x0.view(B*T,L,1).permute(0,2,1))
+        # z = (B*T,4,L')
+        zz = self.dan(z)
+        # zz = (B*T,4,1)
+        x = zz.view(B,T,4)
+
+        #### Projection vers 100-LSTM
         # x = (B,T,a)
+
         # assign each timestep to one of the 100 with Viterbi
-        B,T = x.size(0),x.size(1)
         z = self.mlpx(x)
         # z = (B,T,b)
         # now compute distances btw every input frame and every 100 tgt frame:
@@ -85,6 +120,9 @@ class TSProjector(pl.LightningModule):
                 zz[b,states[b,t]] += z[b,t]
             for t in range(100): zz[b,t] /= ns[t].float()
         # puis on applique notre LSTM
+
+        #### 100-LSTM pour predire le RUL
+
         y,_ = self.lstm(zz)
         # y = (B,100,h)
         rul = self.mlprul(y[:,-1,:].view(B,-1))
@@ -137,6 +175,19 @@ class TSProjector(pl.LightningModule):
         optimizer = torch.optim.Adam(self.parameters(), lr=1e-2)
         return optimizer
 
+class IMSData(torch.utils.data.Dataset):
+    def __init__(self):
+        allseqs,allruls = data.loadTrain()
+        # allseqs = [Nseqs, Lseq=20k]
+        # on veut (Nseqs,Lseq,1) Lseq=20k
+        self.data = [torch.tensor(allseqs).unsqueeze(2)]
+        
+    def __len__(self):
+        return len(self.data)
+
+    def __getitem__(self,i):
+        return self.data[i]
+
 class ToyData(torch.utils.data.Dataset):
     def __init__(self):
         self.data = []
@@ -161,5 +212,14 @@ def toytest():
     trainer = pl.Trainer(max_epochs=1000, log_every_n_steps=1)
     trainer.fit(mod, trainD)
 
-toytest()
+def imstest():
+    mod=TSProjector(100)
+    data = IMSData()
+    params = {'batch_size': 1, 'shuffle': False, 'num_workers': 1}
+    trainD = torch.utils.data.DataLoader(data,**params)
+    trainer = pl.Trainer(max_epochs=1000, log_every_n_steps=1)
+    trainer.fit(mod, trainD)
+
+
+imstest()
 
