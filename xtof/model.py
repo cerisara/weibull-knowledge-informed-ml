@@ -3,6 +3,8 @@ import torch.nn as nn
 import pytorch_lightning as pl
 import data
 
+# TODO: forcer dans les 100 premieres epochs une equi-repartition des trames sur les 100 target-trames-LSTM
+
 # import logging
 # loger = logging.getLogger('pytorch_lightning')
 # loger.setLevel(logging.DEBUG)
