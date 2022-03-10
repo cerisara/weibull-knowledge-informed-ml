@@ -32,6 +32,8 @@ def loadTrain():
     allruls = []
     vmin,vmax = 99999.,-99999.
     for i, sample_name in enumerate(date_list):
+        # debug
+        # if i>=500: break
         t = time.mktime(datetime.datetime.strptime(sample_name, "%Y.%m.%d.%H.%M.%S").timetuple())
         onesecseq = []
         with open(trdir+sample_name,"r") as f:
@@ -48,6 +50,7 @@ def loadTrain():
     largestRUL = allruls[0]
     allruls = [x/largestRUL for x in allruls]
     res=[]
+    print("data",vmin,vmax,len(allruls),len(allseqs),len(allseqs[0]))
     vmax -= vmin
     for s in allseqs:
         res.append([(x-vmin)/vmax for x in s])
@@ -89,5 +92,5 @@ def showTrain():
     plt.legend()
     plt.show()
 
-loadTrain()
+# loadTrain()
 

@@ -3,6 +3,10 @@ import torch.nn as nn
 import pytorch_lightning as pl
 import data
 
+# import logging
+# loger = logging.getLogger('pytorch_lightning')
+# loger.setLevel(logging.DEBUG)
+
 # the later you wait, the better the tools
 # the sooner you start, the better your tools
 
@@ -28,8 +32,8 @@ class TSProjector(pl.LightningModule):
             nn.ReLU(inplace=True),
             nn.MaxPool1d(kernel_size=2, stride=2),
         )
-        self.dan = nn.Sequential(
-                nn.AdaptiveAvgPool1d(1),
+        self.dan1 = nn.AdaptiveAvgPool1d(1)   # (B,4,L) -> (B,4,1)
+        self.dan2 = nn.Sequential(
                 nn.Linear(4,a),nn.ReLU(),
                 nn.Linear(a,a),nn.ReLU(),
                 nn.Linear(a,a))
@@ -68,9 +72,11 @@ class TSProjector(pl.LightningModule):
         B,T,L = x0.size(0),x0.size(1),x0.size(2)
         z = self.cnn(x0.view(B*T,L,1).permute(0,2,1))
         # z = (B*T,4,L')
-        zz = self.dan(z)
+        zz = self.dan1(z)
         # zz = (B*T,4,1)
-        x = zz.view(B,T,4)
+        zz = self.dan2(zz.view(B*T,-1))
+        # zz = (B*T,a)
+        x = zz.view(B,T,-1)
 
         #### Projection vers 100-LSTM
         # x = (B,T,a)
@@ -121,25 +127,34 @@ class TSProjector(pl.LightningModule):
             for t in range(100): zz[b,t] /= ns[t].float()
         # puis on applique notre LSTM
 
-        #### 100-LSTM pour predire le RUL
+        #### 100-LSTM pour predire les RULs
 
         y,_ = self.lstm(zz)
         # y = (B,100,h)
-        rul = self.mlprul(y[:,-1,:].view(B,-1))
-        return rul
+        ruls = self.mlprul(y)
+        return ruls
 
     def shallTrainAlign(self):
         # alternate training align and prediction
         # TODO: train both together E2E ?
         self.stage += 1
-        if self.stage<=100: return True
-        if self.stage<=200: return False
+        if self.stage<=10: return True
+        if self.stage<=20: return False
         self.stage = 0
         return True
 
-    def alignLoss(self,x,length):
-        # x = (B,T,inputdim)
+    def alignLoss(self,x0,length):
+        # x0 = (B,Nseqs,Lseq,1) Lseq=20k
         # length = (B,)
+        B,T,L = x0.size(0),x0.size(1),x0.size(2)
+        z = self.cnn(x0.view(B*T,L,1).permute(0,2,1))
+        # z = (B*T,4,L')
+        zz = self.dan1(z)
+        # zz = (B*T,4,1)
+        zz = self.dan2(zz.view(B*T,-1))
+        # zz = (B*T,a)
+        x = zz.view(B,T,-1)
+        # x = (B,T,inputdim)
         B,T = x.size(0),x.size(1)
         goldy = self.tgtseq.expand(B,100)
         z = self.mlpx(x)
@@ -177,16 +192,17 @@ class TSProjector(pl.LightningModule):
 
 class IMSData(torch.utils.data.Dataset):
     def __init__(self):
-        allseqs,allruls = data.loadTrain()
+        allseqs, allruls = data.loadTrain()
         # allseqs = [Nseqs, Lseq=20k]
         # on veut (Nseqs,Lseq,1) Lseq=20k
         self.data = [torch.tensor(allseqs).unsqueeze(2)]
+        self.ruls = [torch.tensor(allruls)]
         
     def __len__(self):
         return len(self.data)
 
     def __getitem__(self,i):
-        return self.data[i]
+        return self.data[i],self.ruls[i],self.data[i].size(0)
 
 class ToyData(torch.utils.data.Dataset):
     def __init__(self):
