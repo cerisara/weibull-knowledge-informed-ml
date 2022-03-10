@@ -9,11 +9,40 @@ papers:
     - https://arxiv.org/pdf/2005.07057v2.pdf = estime le WEAR pas le RUL
     - estime une accuracy de wear ? Fault Diagnosis from Raw Sensor Data Using Deep Neural Networks Considering Temporal Coherence
 
+approche choisie = estimation du RUL: la doc dit "test to failure experiment", donc je suppose que la fin de la
+serie correspond a la fin de vie d'un des bearing.
+
+Test1: bearings 3 et 4 ont une failure
+Test2: bearing 1 a une failure
+Test3: bearing 3 a une failure
+
 """
 
 ddir = "../data/raw/IMS/"
 
 def loadTrain():
+    trdir = ddir+"2nd_test/"
+    date_list = sorted(os.listdir(trdir))
+    col_names = ["b1_ch1", "b2_ch2", "b3_ch3", "b4_ch4"]
+    start_time= date_list[0]
+    start_time = time.mktime(
+        datetime.datetime.strptime(start_time, "%Y.%m.%d.%H.%M.%S").timetuple()
+    )
+    allseqs = []
+    for i, sample_name in enumerate(date_list):
+        unix_timestamp = time.mktime(
+            datetime.datetime.strptime(sample_name, "%Y.%m.%d.%H.%M.%S").timetuple()
+        )
+        onesecseq = []
+        with open(trdir+sample_name,"r") as f:
+            for l in f:
+                # on ne garde que bearing 1, car c'est le seul a avoir une failure
+                v = l.split("\t")[0]
+                onesecseq.append(v)
+        allseqs.append(onesecseq)
+    return allseqs
+ 
+def showTrain():
     trdir = ddir+"2nd_test/"
     date_list = sorted(os.listdir(trdir))
     col_names = ["b1_ch1", "b2_ch2", "b3_ch3", "b4_ch4"]
