@@ -207,6 +207,7 @@ class ToyData(torch.utils.data.Dataset):
 def toytest():
     mod=TSProjector(7)
     data = ToyData()
+    print("data loaded")
     params = {'batch_size': 2, 'shuffle': True, 'num_workers': 1}
     trainD = torch.utils.data.DataLoader(data,**params)
     trainer = pl.Trainer(max_epochs=1000, log_every_n_steps=1)
