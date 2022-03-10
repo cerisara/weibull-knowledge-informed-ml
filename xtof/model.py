@@ -122,6 +122,8 @@ class TSProjector(pl.LightningModule):
         zz = torch.zeros(B,100,self.b)
         for b in range(B):
             ns = torch.bincount(states[b])
+            maxbin = torch.max(ns).item()
+            self.log("maxbin",maxbin)
             for t in range(T):
                 zz[b,states[b,t]] += z[b,t]
             for t in range(100): zz[b,t] /= ns[t].float()
@@ -234,7 +236,7 @@ def imstest():
     data = IMSData()
     params = {'batch_size': 1, 'shuffle': False, 'num_workers': 1}
     trainD = torch.utils.data.DataLoader(data,**params)
-    trainer = pl.Trainer(max_epochs=1000, log_every_n_steps=1)
+    trainer = pl.Trainer(max_epochs=1000000, log_every_n_steps=1)
     trainer.fit(mod, trainD)
 
 
