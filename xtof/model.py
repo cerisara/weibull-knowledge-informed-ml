@@ -8,6 +8,8 @@ import data
 # pb2: pour equi-forcer, il me faut un Viterbi differentiable; c'est possible, mais un peu de boulot
 # pb3: meme avec un Viterbi differentiable, comme il y a des "hard-decisions" (=steps), pas sur que SGD converge facilement
 # ==> il vaut mieux reimplementer un Baum-Welch, qui est plus smooth ! Et le modifier pour forcer equi-repartition
+# pb4: implementer BW is just a pain (lots of numerical stability issues), et CTC Loss est deja implementee !
+# ==> recopier/modifier le code pytorch de la ctcloss !!
 
 # import logging
 # loger = logging.getLogger('pytorch_lightning')
