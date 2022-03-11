@@ -4,6 +4,10 @@ import pytorch_lightning as pl
 import data
 
 # TODO: forcer dans les 100 premieres epochs une equi-repartition des trames sur les 100 target-trames-LSTM
+# pb1: je ne suis pas totalement sur que mon Viterbi marche bien, mais il devrait malgre tout
+# pb2: pour equi-forcer, il me faut un Viterbi differentiable; c'est possible, mais un peu de boulot
+# pb3: meme avec un Viterbi differentiable, comme il y a des "hard-decisions" (=steps), pas sur que SGD converge facilement
+# ==> il vaut mieux reimplementer un Baum-Welch, qui est plus smooth ! Et le modifier pour forcer equi-repartition
 
 # import logging
 # loger = logging.getLogger('pytorch_lightning')
@@ -103,7 +107,7 @@ class TSProjector(pl.LightningModule):
             bt.append(sttidx)
             st += allsims[:,t,:]
 
-        # backtrack
+        # backtrack (outside comp graph !)
         states=torch.zeros(B,T).long()
         states[:,T-1]=100-1
         for t in range(T-1,0,-1):
@@ -174,6 +178,7 @@ class TSProjector(pl.LightningModule):
                 means /= float(zsegs[i].size(1))
                 # means = (B,b)
                 loss += self.mseloss(means,self.c[:,i])
+            self.log("equiloss",loss)
         else:
             print("computing ctc loss")
             # calcule tous les alignements possibles
@@ -185,6 +190,7 @@ class TSProjector(pl.LightningModule):
             logprobs = nn.functional.log_softmax(pp,dim=2).permute(1,0,2)
             # logprobs = (T,B,101)
             loss = self.ctcloss(logprobs,goldy,length,torch.full((B,),100))
+            self.log("cctloss",loss)
         self.trainingsteps += 1
         return loss
 
@@ -194,13 +200,11 @@ class TSProjector(pl.LightningModule):
         return loss
 
     def training_step(self,batch,batch_idx):
-        self.log("batchidx",batch_idx)
         x,rul,length = batch
         # 1- CTC loss for a few epochs to train to align
         # 2- RUL-pred (MSE) loss after Viterbi align
         if self.shallTrainAlign():
             train_loss= self.alignLoss(x,length)
-            self.log("cctloss",train_loss)
         else:
             train_loss= self.rulLoss(x,rul)
             self.log("rulloss",train_loss)
