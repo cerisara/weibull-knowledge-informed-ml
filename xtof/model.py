@@ -62,6 +62,7 @@ class TSProjector(pl.LightningModule):
                                 nn.Linear(self.d,1))
         # for training:
         self.stage = -1
+        self.trainingsteps = 0
         self.mseloss = nn.MSELoss()
         self.ctcloss = nn.CTCLoss(blank=100)
         self.tgtseq = torch.tensor([i for i in range(100)]).long()
@@ -159,26 +160,41 @@ class TSProjector(pl.LightningModule):
         # zz = (B*T,a)
         x = zz.view(B,T,-1)
         # x = (B,T,inputdim)
-        B,T = x.size(0),x.size(1)
-        goldy = self.tgtseq.expand(B,100)
         z = self.mlpx(x)
-        allsims = torch.matmul(z,self.c)
-        # allsims = (B,T,b) * (b,100) = (B,T,100)
-        blanks = torch.full((B,T,1),-9999.)
-        pp = torch.cat((allsims,blanks),dim=2)
-        logprobs = nn.functional.log_softmax(pp,dim=2).permute(1,0,2)
-        # logprobs = (T,B,101)
-        loss = self.ctcloss(logprobs,goldy,length,torch.full((B,),100))
-        print("ctcloss",loss.item())
+        # z = (B,T,b)
+
+        if self.trainingsteps<=1000:
+            print("computing equialign loss")
+            # equi-align la sequence sur les 100-trames
+            zsegs = torch.split(z,100,dim=1)
+            # zsegs = liste de (B,t,b)
+            loss = 0.
+            for i in range(len(zsegs)):
+                means = torch.sum(zsegs[i],dim=1)
+                means /= float(zsegs[i].size(1))
+                # means = (B,b)
+                loss += self.mseloss(means,self.c[:,i])
+        else:
+            print("computing ctc loss")
+            # calcule tous les alignements possibles
+            goldy = self.tgtseq.expand(B,100)
+            allsims = torch.matmul(z,self.c)
+            # allsims = (B,T,b) * (b,100) = (B,T,100)
+            blanks = torch.full((B,T,1),-9999.)
+            pp = torch.cat((allsims,blanks),dim=2)
+            logprobs = nn.functional.log_softmax(pp,dim=2).permute(1,0,2)
+            # logprobs = (T,B,101)
+            loss = self.ctcloss(logprobs,goldy,length,torch.full((B,),100))
+        self.trainingsteps += 1
         return loss
 
     def rulLoss(self,x,y):
         haty = self.forward(x)
         loss = self.mseloss(haty,y)
-        print("rulloss",loss.item())
         return loss
 
     def training_step(self,batch,batch_idx):
+        self.log("batchidx",batch_idx)
         x,rul,length = batch
         # 1- CTC loss for a few epochs to train to align
         # 2- RUL-pred (MSE) loss after Viterbi align
