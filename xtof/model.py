@@ -207,6 +207,8 @@ class TSProjector(pl.LightningModule):
         # 2- RUL-pred (MSE) loss after Viterbi align
         if True or self.shallTrainAlign():
             train_loss= self.alignLoss(x,length)
+            # debug:
+            self.forward(x)
         else:
             train_loss= self.rulLoss(x,rul)
             self.log("rulloss",train_loss)
