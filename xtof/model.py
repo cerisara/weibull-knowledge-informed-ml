@@ -169,7 +169,7 @@ class TSProjector(pl.LightningModule):
         z = self.mlpx(x)
         # z = (B,T,b)
 
-        if self.trainingsteps<=1000:
+        if True or self.trainingsteps<=1000:
             print("computing equialign loss")
             # equi-align la sequence sur les 100-trames
             zsegs = torch.split(z,100,dim=1)
@@ -205,7 +205,7 @@ class TSProjector(pl.LightningModule):
         x,rul,length = batch
         # 1- CTC loss for a few epochs to train to align
         # 2- RUL-pred (MSE) loss after Viterbi align
-        if self.shallTrainAlign():
+        if True or self.shallTrainAlign():
             train_loss= self.alignLoss(x,length)
         else:
             train_loss= self.rulLoss(x,rul)
