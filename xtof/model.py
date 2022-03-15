@@ -179,6 +179,8 @@ class TSProjector(pl.LightningModule):
                 means = torch.sum(zsegs[i],dim=1)
                 means /= float(zsegs[i].size(1))
                 # means = (B,b)
+                # attention: je minimise ici la MSE loss alors que dans Viterbi je maximise le dot-product !
+                # c'est la meme chose, car d(X,Y)^2 = 2 - 2 X.Y
                 loss += self.mseloss(means,self.c[:,i])
             self.log("equiloss",loss)
         else:
