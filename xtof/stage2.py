@@ -59,6 +59,12 @@ class TSProjector(pl.LightningModule):
         self.ctcloss = nn.CTCLoss(blank=100)
         self.tgtseq = torch.tensor([i for i in range(100)]).long()
 
+    def freeze_aligner(self):
+        for p in self.cnn.parameters(): p.requires_grad = False
+        for p in self.dan1.parameters(): p.requires_grad = False
+        for p in self.dan2.parameters(): p.requires_grad = False
+        for p in self.mlpx.parameters(): p.requires_grad = False
+
     def forward(self,x0):
         # TODO: prendre exemple sur ce lien pour plus rapide ? https://pytorch.org/tutorials/intermediate/forced_alignment_with_torchaudio_tutorial.html
 
@@ -218,11 +224,12 @@ class IMSData(torch.utils.data.Dataset):
     def __getitem__(self,i):
         return self.data[i],self.ruls[i],self.data[i].size(0)
 
-def imstest():
+def train_stage2():
     mod=TSProjector(100)
     # il faut d'abord copier le checkpoint de la fin du stage 1 que l'on veut garder
     cp = torch.load("mod_stage1.pt")
     mod.load_state_dict(cp['state_dict'])
+    mod.freeze_aligner()
     mod.train()
     data = IMSData()
     params = {'batch_size': 1, 'shuffle': False, 'num_workers': 1}
@@ -231,5 +238,5 @@ def imstest():
     trainer.fit(mod, trainD)
 
 
-imstest()
+train_stage2()
 

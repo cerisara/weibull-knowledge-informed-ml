@@ -20,10 +20,8 @@ Test3: bearing 3 a une failure
 
 ddir = "../data/raw/IMS/"
 
-def loadDev():
-    trdir = ddir+"1st_test/"
-    date_list = sorted(os.listdir(trdir))
-    col_names = ["b1", "b1", "b2", "b2", "b3", "b3", "b4", "b4"]
+def loadCol(datadir,col):
+    date_list = sorted(os.listdir(datadir))
     start_time= date_list[0]
     start_time = time.mktime(
         datetime.datetime.strptime(start_time, "%Y.%m.%d.%H.%M.%S").timetuple()
@@ -36,12 +34,9 @@ def loadDev():
         # if i>=500: break
         t = time.mktime(datetime.datetime.strptime(sample_name, "%Y.%m.%d.%H.%M.%S").timetuple())
         onesecseq = []
-        with open(trdir+sample_name,"r") as f:
+        with open(datadir+sample_name,"r") as f:
             for l in f:
-                # on ne garde que bearing 3 pour le dev
-                v = float(l.split("\t")[4])
-                # TODO: utiliser les vmin vmax du train !
-                # stats venant du train: data -5.0 4.998 984 984 20480
+                v = float(l.split("\t")[col])
                 if v<vmin: vmin=v
                 elif v>vmax: vmax=v
                 onesecseq.append(v)
@@ -50,9 +45,18 @@ def loadDev():
     lastT = allruls[-1]
     allruls = [lastT-x for x in allruls]
     largestRUL = allruls[0]
-    allruls = [x/largestRUL for x in allruls]
+    print("data vmin vmax nfrRUL nfrX duration",datadir,col,vmin,vmax,len(allruls),len(allseqs),largestRUL)
+    return allseqs,allruls,vmin,vmax
+ 
+def loadDev():
+    with open("training.stats","r") as f: l = f.read()
+    print("get training vmin vmax",vmin,vmax)
+    vmin,vmax = [float(x) for x in l.split(" ")]
+    trdir = ddir+"1st_test/"
+    allseqs,allruls,_,_ = loadCol(trdir,4)
+    # j'ai choisi 2500 car ca depasse la duration max de tout le corpus (to check ?)
+    allruls = [x/2500 for x in allruls]
     res=[]
-    print("data",vmin,vmax,len(allruls),len(allseqs),len(allseqs[0]))
     vmax -= vmin
     for s in allseqs:
         res.append([(x-vmin)/vmax for x in s])
@@ -60,35 +64,12 @@ def loadDev():
  
 def loadTrain():
     trdir = ddir+"2nd_test/"
-    date_list = sorted(os.listdir(trdir))
-    col_names = ["b1_ch1", "b2_ch2", "b3_ch3", "b4_ch4"]
-    start_time= date_list[0]
-    start_time = time.mktime(
-        datetime.datetime.strptime(start_time, "%Y.%m.%d.%H.%M.%S").timetuple()
-    )
-    allseqs = []
-    allruls = []
-    vmin,vmax = 99999.,-99999.
-    for i, sample_name in enumerate(date_list):
-        # debug
-        # if i>=500: break
-        t = time.mktime(datetime.datetime.strptime(sample_name, "%Y.%m.%d.%H.%M.%S").timetuple())
-        onesecseq = []
-        with open(trdir+sample_name,"r") as f:
-            for l in f:
-                # on ne garde que bearing 1, car c'est le seul a avoir une failure
-                v = float(l.split("\t")[0])
-                if v<vmin: vmin=v
-                elif v>vmax: vmax=v
-                onesecseq.append(v)
-        allseqs.append(onesecseq)
-        allruls.append(t)
-    lastT = allruls[-1]
-    allruls = [lastT-x for x in allruls]
-    largestRUL = allruls[0]
-    allruls = [x/largestRUL for x in allruls]
+    allseqs,allruls,vmin,vmax = loadCol(trdir,0)
+    print("save training vmin vmax",vmin,vmax)
+    if not os.path.isfile("training.stats"):
+        with open("training.stats","w") as f: f.write(str(vmin)+" "+str(vmax))
+    allruls = [x/2500 for x in allruls]
     res=[]
-    print("data",vmin,vmax,len(allruls),len(allseqs),len(allseqs[0]))
     vmax -= vmin
     for s in allseqs:
         res.append([(x-vmin)/vmax for x in s])
@@ -129,6 +110,4 @@ def showTrain():
     plt.plot(yy3,label="b4")
     plt.legend()
     plt.show()
-
-# loadTrain()
 

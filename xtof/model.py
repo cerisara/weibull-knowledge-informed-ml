@@ -3,17 +3,20 @@ import torch.nn as nn
 import pytorch_lightning as pl
 import data
 
-# TODO: forcer dans les 100 premieres epochs une equi-repartition des trames sur les 100 target-trames-LSTM
-# pb1: je ne suis pas totalement sur que mon Viterbi marche bien, mais il devrait malgre tout
-# pb2: pour equi-forcer, il me faut un Viterbi differentiable; c'est possible, mais un peu de boulot
-# pb3: meme avec un Viterbi differentiable, comme il y a des "hard-decisions" (=steps), pas sur que SGD converge facilement
-# ==> il vaut mieux reimplementer un Baum-Welch, qui est plus smooth ! Et le modifier pour forcer equi-repartition
-# pb4: implementer BW is just a pain (lots of numerical stability issues), et CTC Loss est deja implementee !
-# ==> recopier/modifier le code pytorch de la ctcloss !!
+# PB: les sequences de RUL varient enormement, de 7j a 34j, impossible de predire un RUL
+# BUG: en mode test, on ne doit pas forced-aligned ! on doit laisser l'alignement rester sur le 1er etat du LSTM s'il le souhaite !
+# ==> facile en modifiant Viterbi: tous les etats sont terminaux, donc on choisit le score final max parmi les 100 etats
+# chacun des 100 etats represente un Health State
 
-# import logging
-# loger = logging.getLogger('pytorch_lightning')
-# loger.setLevel(logging.DEBUG)
+# je pourrais faire comme TurboFan et fixer un RUL max à 1j, mais c'est arbitraire et d'autres series auraient besoin d'autres valeurs *correspondantes*
+# en fait, c'est le role des 100 trames de representer un comportement generique: par ex. jusque 80, pas de degradation, ensuite degradation pour toutes les TS
+# donc le "RUL" n'a pas de sens lorsqu'on est au début; on peut dire que les 100 trames representent un health state
+# en pratique, un critere objectif reste de predire: "la machine crashera dans 5 jours" mais pour cela, il faut associer a chacune des 100 trames
+# une "duree", qui depend de la TS; mais la dynamique de ces "durees" doit etre independante des TS.
+# on peut parametriser ces durees par une loi logarithmique afin de bien capter la dynamique de degradation vers la fin avec plus d'etats que au debut
+# de plus, il faut que le 1er etat ait une duree "infinie" possible
+# il faudrait commencer avec 1 seul état, puis on le fait grossir en 2, 3, etc.
+
 
 # the later you wait, the better the tools
 # the sooner you start, the better your tools
@@ -121,6 +124,7 @@ class TSProjector(pl.LightningModule):
         for b in range(B):
             for t in range(T):
                 if states[b,t]<0 or states[b,t]>99: print("BUG",b,t,states[b,t])
+        self.align = states.detach().numpy()
         # for t in range(T):
         #     print("VIT",t,states[0,t].item())
  
@@ -219,6 +223,11 @@ class TSProjector(pl.LightningModule):
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(self.parameters(), lr=1e-4)
         return optimizer
+
+    def getAlignSource(self,t):
+        # 0 <= t <= 99
+        i=np.searchsorted(self.align[0],t+1) -1
+        return i
 
 class IMSData(torch.utils.data.Dataset):
     def __init__(self):

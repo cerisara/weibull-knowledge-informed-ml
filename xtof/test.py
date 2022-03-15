@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import pytorch_lightning as pl
 import data
+import numpy as np
 
 # apres avoir train un model qui optimise le RUL dans stage2, j affiche ici la meme courbe
 # que dans le papier |Knowledge Informed Machine Learning using a Weibull-based Loss Function
@@ -107,6 +108,7 @@ class TSProjector(pl.LightningModule):
         for b in range(B):
             for t in range(T):
                 if states[b,t]<0 or states[b,t]>99: print("BUG",b,t,states[b,t])
+        self.align = states.detach().numpy()
         # for t in range(T):
         #     print("VIT",t,states[0,t].item())
  
@@ -165,6 +167,8 @@ class TSProjector(pl.LightningModule):
                 means = torch.sum(zsegs[i],dim=1)
                 means /= float(zsegs[i].size(1))
                 # means = (B,b)
+                # attention: je minimise ici la MSE loss alors que dans Viterbi je maximise le dot-product !
+                # c'est la meme chose, car d(X,Y)^2 = 2 - 2 X.Y
                 loss += self.mseloss(means,self.c[:,i])
             self.log("equiloss",loss)
         else:
@@ -204,6 +208,11 @@ class TSProjector(pl.LightningModule):
         optimizer = torch.optim.Adam(self.parameters(), lr=1e-4)
         return optimizer
 
+    def getAlignSource(self,t):
+        # 0 <= t <= 99
+        i=np.searchsorted(self.align[0],t+1) -1
+        return i
+
 class IMSData(torch.utils.data.Dataset):
     def __init__(self):
         allseqs, allruls = data.loadTrain()
@@ -223,6 +232,7 @@ def eval():
     x = data.data[0].unsqueeze(0)
     y = data.ruls[0]
     print("data",x.size(),y.size())
+    # x=torch.Size([1, 984, 20480, 1]) y=torch.Size([984])
     mod=TSProjector(100)
     # il faut d'abord copier le checkpoint de la fin du stage 1 que l'on veut garder
     cp = torch.load("stg2.pt")
@@ -231,7 +241,7 @@ def eval():
     haty = mod(x)
     # haty = (1,100,1)
     for i in range(100):
-        print("RUL",haty[0,i,0].item())
+        print("RUL",y[mod.getAlignSource(i)].item(),haty[0,i,0].item())
 
 eval()
 
