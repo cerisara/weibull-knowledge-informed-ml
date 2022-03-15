@@ -3,23 +3,9 @@ import torch.nn as nn
 import pytorch_lightning as pl
 import data
 
-# TODO: forcer dans les 100 premieres epochs une equi-repartition des trames sur les 100 target-trames-LSTM
-# pb1: je ne suis pas totalement sur que mon Viterbi marche bien, mais il devrait malgre tout
-# pb2: pour equi-forcer, il me faut un Viterbi differentiable; c'est possible, mais un peu de boulot
-# pb3: meme avec un Viterbi differentiable, comme il y a des "hard-decisions" (=steps), pas sur que SGD converge facilement
-# ==> il vaut mieux reimplementer un Baum-Welch, qui est plus smooth ! Et le modifier pour forcer equi-repartition
-# pb4: implementer BW is just a pain (lots of numerical stability issues), et CTC Loss est deja implementee !
-# ==> recopier/modifier le code pytorch de la ctcloss !!
-
-# import logging
-# loger = logging.getLogger('pytorch_lightning')
-# loger.setLevel(logging.DEBUG)
-
-# the later you wait, the better the tools
-# the sooner you start, the better your tools
-
-# pour visualiser avec tensorboard:
-# tensorboard --logdir ./lightning_logs/
+# dans model.py, je train avec un seul critere = equi-repartir la projection de la seq initiale vers les 100 fr
+# ici, je train le RUL sans me préoccuper de la projection, pour voir comment elle evolue: va-t-elle rester
+# stable et equi-repartie, ou va-t-elle progressivement (ou brusquement) degenerer ?
 
 class TSProjector(pl.LightningModule):
     def __init__(self,a):
@@ -205,7 +191,7 @@ class TSProjector(pl.LightningModule):
         x,rul,length = batch
         # 1- CTC loss for a few epochs to train to align
         # 2- RUL-pred (MSE) loss after Viterbi align
-        if True or self.shallTrainAlign():
+        if False and self.shallTrainAlign():
             train_loss= self.alignLoss(x,length)
             # debug:
             self.forward(x)
@@ -232,33 +218,12 @@ class IMSData(torch.utils.data.Dataset):
     def __getitem__(self,i):
         return self.data[i],self.ruls[i],self.data[i].size(0)
 
-class ToyData(torch.utils.data.Dataset):
-    def __init__(self):
-        self.data = []
-        # generate a total of 20 random samples
-        for i in range(20):
-            x = torch.rand(1000,7)
-            rul = torch.rand(1)
-            # 3rd item = length of the seq (useful when padding seqs)
-            self.data.append((x,rul,130))
-
-    def __len__(self):
-        return len(self.data)
-
-    def __getitem__(self,i):
-        return self.data[i]
-
-def toytest():
-    mod=TSProjector(7)
-    data = ToyData()
-    print("data loaded")
-    params = {'batch_size': 2, 'shuffle': True, 'num_workers': 1}
-    trainD = torch.utils.data.DataLoader(data,**params)
-    trainer = pl.Trainer(max_epochs=1000, log_every_n_steps=1)
-    trainer.fit(mod, trainD)
-
 def imstest():
     mod=TSProjector(100)
+    # il faut d'abord copier le checkpoint de la fin du stage 1 que l'on veut garder
+    cp = torch.load("mod_stage1.pt")
+    mod.load_state_dict(cp['state_dict'])
+    mod.train()
     data = IMSData()
     params = {'batch_size': 1, 'shuffle': False, 'num_workers': 1}
     trainD = torch.utils.data.DataLoader(data,**params)
