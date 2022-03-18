@@ -19,6 +19,7 @@ Test3: bearing 3 a une failure
 """
 
 ddir = "../data/raw/IMS/"
+RULMAX = 10000000
 
 def loadCol(datadir,col):
     date_list = sorted(os.listdir(datadir))
@@ -50,12 +51,11 @@ def loadCol(datadir,col):
  
 def loadDev():
     with open("training.stats","r") as f: l = f.read()
-    print("get training vmin vmax",vmin,vmax)
     vmin,vmax = [float(x) for x in l.split(" ")]
+    print("get training vmin vmax",vmin,vmax)
     trdir = ddir+"1st_test/"
     allseqs,allruls,_,_ = loadCol(trdir,4)
-    # j'ai choisi 2500 car ca depasse la duration max de tout le corpus (to check ?)
-    allruls = [x/2500 for x in allruls]
+    allruls = [x/RULMAX for x in allruls]
     res=[]
     vmax -= vmin
     for s in allseqs:
@@ -68,7 +68,7 @@ def loadTrain():
     print("save training vmin vmax",vmin,vmax)
     if not os.path.isfile("training.stats"):
         with open("training.stats","w") as f: f.write(str(vmin)+" "+str(vmax))
-    allruls = [x/2500 for x in allruls]
+    allruls = [x/RULMAX for x in allruls]
     res=[]
     vmax -= vmin
     for s in allseqs:
